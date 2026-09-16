@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="wood" viewBox="0 0 64 64">
+    <path d="M11 43c9 7 29 9 42 2 3-2 4-8 1-11-7-7-29-11-42-2-4 3-5 8-1 11Z" fill="#9a6a3f"/>
+    <path d="M17 38c8 3 21 5 31 1" fill="none" stroke="#5d341d" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="22" cy="38" r="5" fill="#d9ad74" stroke="#5d341d" stroke-width="3"/>
+  </symbol>
+  <symbol id="clay" viewBox="0 0 64 64">
+    <path d="M12 43 24 17h25l5 26-13 8-19-1Z" fill="#b6573f"/>
+    <path d="M24 17 35 31 54 43M12 43h29" fill="none" stroke="#6f2d22" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="reed" viewBox="0 0 64 64">
+    <path d="M18 52c4-15 3-28 0-42M31 53c1-17 1-30 3-43M45 52c-4-15-2-28 2-41" fill="none" stroke="#b58b3b" stroke-width="6" stroke-linecap="round"/>
+    <path d="M12 33h39M15 43h33" fill="none" stroke="#6f5a24" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="stone" viewBox="0 0 64 64">
+    <path d="M13 27 28 12l21 6 5 22-17 12-21-4Z" fill="#8a9292"/>
+    <path d="M28 12 34 31l20 9M16 48l18-17" fill="none" stroke="#545c5d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="grain" viewBox="0 0 64 64">
+    <path d="M32 55V9" fill="none" stroke="#9b6f12" stroke-width="5" stroke-linecap="round"/>
+    <path d="M32 17c-9 0-13 4-14 11 8 1 13-2 14-11Zm0 10c9 0 13 4 14 11-8 1-13-2-14-11Zm0 10c-9 0-13 4-14 11 8 1 13-2 14-11Z" fill="#e3b53b"/>
+  </symbol>
+  <symbol id="vegetable" viewBox="0 0 64 64">
+    <path d="M19 28c-5 10-4 22 5 26 11 5 28-9 25-21-2-9-20-13-30-5Z" fill="#df6f31"/>
+    <path d="M35 27c3-9 9-12 16-11-2 8-7 13-16 11Zm-2 0c-6-6-12-8-19-5 4 7 10 10 19 5Z" fill="#4f9851"/>
+  </symbol>
+  <symbol id="food" viewBox="0 0 64 64">
+    <circle cx="32" cy="34" r="20" fill="#f0c34e" stroke="#8f6320" stroke-width="4"/>
+    <path d="M24 32h16M32 24v20" stroke="#8f6320" stroke-width="5" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="sheep" viewBox="0 0 64 64">
+    <path d="M19 37c-8-9-2-23 11-22 14-8 29 7 21 22 5 8-5 17-14 11-8 6-23 1-18-11Z" fill="#f4f0dd" stroke="#5d5442" stroke-width="3"/>
+    <circle cx="46" cy="27" r="5" fill="#5d5442"/>
+    <path d="M24 49v7M42 49v7" stroke="#5d5442" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="boar" viewBox="0 0 64 64">
+    <path d="M12 36c2-13 21-20 38-10 8 5 5 19-4 22-13 5-33 2-34-12Z" fill="#5b473d"/>
+    <path d="M48 34h9l-7 7" fill="none" stroke="#e9dcc6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="43" cy="30" r="3" fill="#12100f"/>
+    <path d="M22 48v7M39 48v7" stroke="#332720" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="cattle" viewBox="0 0 64 64">
+    <path d="M15 36c0-13 13-20 28-17 13 2 15 20 4 27-12 8-32 4-32-10Z" fill="#8f5b38"/>
+    <path d="M43 23c5-8 10-9 15-8-3 6-7 10-13 11M22 24c-5-8-10-9-15-8 3 6 7 10 13 11" fill="none" stroke="#5a3622" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="45" cy="34" r="3" fill="#1d1410"/>
+    <path d="M23 47v8M42 47v8" stroke="#5a3622" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="person" viewBox="0 0 64 64">
+    <circle cx="32" cy="15" r="9" fill="currentColor"/>
+    <path d="M18 56c2-17 6-28 14-28s12 11 14 28Z" fill="currentColor"/>
+    <path d="M20 35c-7 4-9 8-9 14M44 35c7 4 9 8 9 14" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="stable" viewBox="0 0 64 64">
+    <path d="M10 30 32 12l22 18v24H10Z" fill="#a55b35"/>
+    <path d="M18 54V34h28v20M10 30h44" fill="none" stroke="#5d301e" stroke-width="5" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="field" viewBox="0 0 64 64">
+    <rect x="10" y="12" width="44" height="40" rx="5" fill="#7a5b35"/>
+    <path d="M16 23h32M16 32h32M16 41h32" stroke="#d6ba72" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="room" viewBox="0 0 64 64">
+    <path d="M8 30 32 11l24 19v24H8Z" fill="currentColor"/>
+    <path d="M22 54V36h20v18M8 30h48" fill="none" stroke="#2c261e" stroke-width="5" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="fence" viewBox="0 0 64 64">
+    <path d="M13 16v36M51 16v36M8 27h48M8 42h48" stroke="#7c5128" stroke-width="7" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="card" viewBox="0 0 64 64">
+    <rect x="14" y="8" width="36" height="48" rx="5" fill="#f8f2df" stroke="#6c5a3f" stroke-width="4"/>
+    <path d="M20 20h24M20 30h18M20 40h20" stroke="#6c5a3f" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="first" viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="23" fill="#e8b83f" stroke="#7a5421" stroke-width="4"/>
+    <path d="m24 32 6 6 12-15" fill="none" stroke="#7a5421" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
