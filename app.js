@@ -10,6 +10,12 @@
   const MAX_STABLES = 4;
   const HARVEST_AFTER = [4, 7, 9, 11, 13, 14];
 
+  const navigationEntry = performance.getEntriesByType?.("navigation")?.[0];
+  if (navigationEntry?.type === "reload") {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ROOM_CODE_KEY);
+  }
+
   const RESOURCE_ORDER = [
     "wood",
     "clay",
@@ -260,9 +266,9 @@
     }
   }
 
-  function saveState() {
+  function saveState(forceRoomPublish = false) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    scheduleSocketPublish();
+    scheduleSocketPublish(120, forceRoomPublish);
   }
 
   function hydrateState(nextState) {
@@ -290,7 +296,20 @@
   }
 
   function canControlGame() {
-    return !roomSession.code || roomSession.room?.isHost;
+    if (!roomSession.code) return true;
+    if (!state.started) return Boolean(roomSession.room?.isHost);
+    const current = getActiveTurnPlayer();
+    return Boolean(current && normalizePlayerName(current.name) === normalizePlayerName(suggestedRoomName()));
+  }
+
+  function getActiveTurnPlayer() {
+    return state.phase === "harvest"
+      ? state.players?.[state.harvest?.playerIndex]
+      : getCurrentPlayer();
+  }
+
+  function normalizePlayerName(name) {
+    return String(name || "").trim().toLocaleLowerCase("ko-KR");
   }
 
   function showRoomMessage(message) {
@@ -506,7 +525,7 @@
       render();
     });
     roomSocket.on("game-state", ({ roomCode, state: nextState }) => {
-      if (roomCode !== roomSession.code || roomSession.room?.isHost) return;
+      if (roomCode !== roomSession.code) return;
       applyRemoteState(nextState);
       render();
     });
@@ -586,14 +605,14 @@
     }
   }
 
-  function scheduleSocketPublish(delay = 120) {
-    if (suppressPublish || !roomSession.code || !roomSession.room?.isHost) return;
+  function scheduleSocketPublish(delay = 120, force = false) {
+    if (suppressPublish || !roomSession.code || (!force && !canControlGame())) return;
     clearTimeout(publishTimer);
-    publishTimer = setTimeout(publishSocketState, delay);
+    publishTimer = setTimeout(() => publishSocketState(force), delay);
   }
 
-  async function publishSocketState() {
-    if (!roomSession.code || !roomSession.room?.isHost) return;
+  async function publishSocketState(force = false) {
+    if (!roomSession.code || (!force && !canControlGame())) return;
     try {
       await socketAck("game-state", { roomCode: roomSession.code, state });
     } catch (error) {
@@ -622,9 +641,10 @@
           ${renderActiveTab()}
         </main>
         ${renderTabbar()}
+        ${renderTurnSnackbar()}
       </div>
     `;
-    modalRoot.innerHTML = state.modal ? renderModal() : "";
+    modalRoot.innerHTML = state.modal && canControlGame() ? renderModal() : "";
   }
 
   function renderSetup() {
@@ -684,7 +704,7 @@
     return `
       <section class="${compact ? "room-strip" : "setup-card"}">
         <div class="room-head">
-          <strong>방 ${connected ? escapeHtml(roomSession.code) : "연결 없음"}</strong>
+          <strong>방 ${connected ? escapeHtml(roomSession.code) : "연결 없음"}${connected ? ` · 참여 ${members.length}명` : ""}</strong>
           <span class="chip connection-status ${serverOnline ? "online" : "offline"}">${modeLabel}${hostName ? ` · 방장 ${escapeHtml(hostName)}` : ""}</span>
         </div>
         <div class="room-grid">
@@ -696,19 +716,18 @@
         </div>
         ${members.length ? `<div class="chips">${members.map((member) => `<span class="chip">${member.isHost ? icon("first", "sm") : icon("person", "sm")}${escapeHtml(member.name)}</span>`).join("")}</div>` : ""}
         ${roomSession.message ? `<div class="notice">${escapeHtml(roomSession.message)}</div>` : ""}
-        ${connected && !roomSession.room?.isHost ? `<div class="notice">현재 방장이 진행 중입니다. 방장이 나가면 가장 먼저 입장한 참여자가 자동으로 방장을 이어받습니다.</div>` : ""}
       </section>
     `;
   }
 
   function renderTopbar() {
-    const current = getCurrentPlayer();
+    const current = getActiveTurnPlayer();
     const phaseLabel = state.phase === "harvest" ? "수확" : state.phase === "gameover" ? "종료" : "일하기";
     return `
       <header class="topbar">
         <div class="brand">
           <div class="brand-title">${icon("grain", "sm")} Agricola</div>
-          <div class="brand-subtitle">${state.round} / 14 라운드 · ${phaseLabel} · ${current ? escapeHtml(current.name) : "점수 계산"}</div>
+            <div class="brand-subtitle">${state.round} / 14 라운드 · ${phaseLabel} · 현재 턴 ${current ? escapeHtml(current.name) : "점수 계산"}</div>
         </div>
         <div class="top-actions">
           <button class="icon-btn" title="되돌리기" data-action="undo" ${state.history?.length ? "" : "disabled"}>↶</button>
@@ -716,6 +735,13 @@
         </div>
       </header>
     `;
+  }
+
+  function renderTurnSnackbar() {
+    if (!roomSession.code || canControlGame() || state.phase === "gameover") return "";
+    const current = getActiveTurnPlayer();
+    if (!current) return "";
+    return `<div class="turn-snackbar" role="status" aria-live="polite"><span class="player-dot" style="background:${current.color}"></span>${escapeHtml(current.name)}님이 행동하고 있습니다.</div>`;
   }
 
   function renderTurnCard() {
@@ -1491,11 +1517,12 @@
   }
 
   function commit(mutator) {
+    const mayPublish = canControlGame();
     const before = JSON.stringify({ ...state, modal: state.modal });
     try {
       state.history = [...(state.history || []), before].slice(-30);
       mutator();
-      saveState();
+      saveState(mayPublish);
     } catch (error) {
       console.error(error);
       state = hydrateState(JSON.parse(before));

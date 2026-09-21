@@ -83,10 +83,6 @@ io.on("connection", (socket) => {
       return reply(acknowledge, { ok: false, error: "먼저 방에 입장해야 합니다." });
     }
 
-    if (room.hostId !== socket.id) {
-      return reply(acknowledge, { ok: false, error: "방장만 게임 상태를 변경할 수 있습니다." });
-    }
-
     if (!("state" in payload)) {
       return reply(acknowledge, { ok: false, error: "공유할 state가 없습니다." });
     }

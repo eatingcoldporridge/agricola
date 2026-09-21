@@ -431,6 +431,26 @@ button {
   box-shadow: 0 -10px 28px rgba(22, 28, 23, 0.22);
 }
 
+.turn-snackbar {
+  position: fixed;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 45;
+  display: flex;
+  max-width: calc(100vw - 24px);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #b6c2b2;
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(31, 37, 32, 0.18);
+  padding: 9px 12px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
 .tab-btn {
   display: grid;
   min-height: 52px;
