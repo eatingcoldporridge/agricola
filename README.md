@@ -1,31 +1,58 @@
-# Agricola Mobile Table
+# Agricola Multiplayer
 
-모바일 브라우저에서 진행하는 Agricola 2016 Revised Edition 기반 패스앤플레이 보드입니다.
+Node.js, Express, Socket.IO 기반의 Agricola 실시간 멀티플레이 프로젝트입니다. 서버는 현재 폴더의 프론트엔드 파일도 정적으로 제공합니다.
+
+## 프로젝트 구조
+
+```text
+agricola/
+|-- assets/
+|-- app.js
+|-- index.html
+|-- styles.css
+|-- server.js          # Express + Socket.IO 서버
+|-- server.mjs         # 기존 HTTP/SSE 서버(호환 보관)
+|-- package.json
+`-- README.md
+```
 
 ## 실행
 
 ```powershell
 cd C:\Users\Medimind\Desktop\agricola
-node server.mjs
+npm install
+npm start
 ```
 
-브라우저에서 `http://localhost:5177`을 엽니다. 같은 와이파이의 휴대폰에서 접속하려면 PC의 로컬 IP와 포트 `5177`을 사용합니다.
+브라우저에서 `http://localhost:5177`을 엽니다. 포트는 `PORT` 환경 변수로 변경할 수 있습니다.
 
-## 방 코드 플레이
+## Socket.IO 이벤트
 
-- 방장이 `방 만들기`를 누르면 6자리 코드가 생성됩니다.
-- 다른 기기는 같은 주소로 접속한 뒤 코드를 입력하고 `코드 입장`을 누릅니다.
-- 방장만 게임을 진행하고, 참여자는 같은 상태를 실시간으로 봅니다.
-- 방장이 `나가기`를 누르거나 연결이 끊기면 가장 먼저 입장한 참여자가 방장을 이어받습니다.
+### `create-room`
 
-## 구현 범위
+```js
+socket.emit("create-room", { playerName: "농부 1", initialState: {} }, (result) => {
+  console.log(result.room.code);
+});
+```
 
-- 1-4인 새 게임, 시작 음식, 14라운드, 단계별 라운드 카드 무작위 공개
-- 행동 공간 점유, 누적 자원, 시작 플레이어 변경, 수확 라운드 자동 진입
-- 밭 갈기, 씨 뿌리기, 빵 굽기, 방/마구간/울타리/목초지, 가족 늘리기, 집 고치기
-- 양/멧돼지/소 수용, 목초지와 마구간 용량, 수확 번식
-- 대형 설비 10장, 주요 음식 변환, 우물 예약 음식, 최종 점수 계산
-- 코드 방 입장, 실시간 상태 동기화, 방장 권한 및 방장 계승
-- 직접 제작한 SVG 자원/동물/가족 미플 및 카드형 UI
+### `join-room`
 
-공식 카드 원문과 원작 그래픽은 포함하지 않았습니다. 직업 카드는 이름과 메모를 수동 등록해 플레이 로그와 점수판 흐름에 함께 보이도록 했습니다.
+```js
+socket.emit("join-room", { roomCode: "A1B2C3", playerName: "농부 2" }, (result) => {
+  console.log(result.room, result.state);
+});
+```
+
+### `game-state`
+
+방장만 상태를 갱신할 수 있습니다. 다른 참가자는 `game-state` 이벤트로 새 상태를 받습니다.
+
+```js
+socket.emit("game-state", { roomCode: "A1B2C3", state: gameState }, console.log);
+socket.on("game-state", ({ state }) => renderGame(state));
+```
+
+참가자 목록은 `room-updated`, 방장 승계는 `host-changed` 이벤트로 전달됩니다. 방장이 나가면 입장 시간이 가장 빠른 참가자가 새 방장이 됩니다.
+
+> 방과 게임 상태는 서버 메모리에 저장되므로 서버 재시작 시 초기화됩니다. 운영 환경에서는 Redis나 데이터베이스를 연결해야 합니다.
