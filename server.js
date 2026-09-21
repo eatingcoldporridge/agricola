@@ -181,17 +181,20 @@ function leaveCurrentRoom(socket, leaveSocketIoRoom = true) {
 }
 
 function serializeRoom(room, viewerId = "") {
+  const members = [...room.players.values()]
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+    .map((player) => ({
+      id: player.id,
+      name: player.name,
+      isHost: player.id === room.hostId,
+    }));
+
   return {
     code: room.code,
     hostId: room.hostId,
     isHost: room.hostId === viewerId,
-    players: [...room.players.values()]
-      .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((player) => ({
-        id: player.id,
-        name: player.name,
-        isHost: player.id === room.hostId,
-      })),
+    members,
+    players: members,
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
   };

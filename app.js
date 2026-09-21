@@ -216,6 +216,10 @@
     source: null,
     message: "",
   };
+  const socketServerUrl = String(window.AGRICOLA_SERVER_URL || "").replace(/\/$/, "");
+  const roomSocket = typeof window.io === "function"
+    ? window.io(socketServerUrl || undefined, { autoConnect: false, transports: ["websocket", "polling"] })
+    : null;
 
   let state = loadState();
   if (new URLSearchParams(window.location.search).get("demo") === "1") {
@@ -228,8 +232,8 @@
   document.addEventListener("click", handleClick);
   document.addEventListener("input", handleInput);
   document.addEventListener("change", handleInput);
-  setInterval(roomHeartbeat, 10000);
-  reconnectSavedRoom();
+  initializeSocketRoom();
+  reconnectSavedSocketRoom();
 
   function defaultState() {
     return {
@@ -258,7 +262,7 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    scheduleRoomPublish();
+    scheduleSocketPublish();
   }
 
   function hydrateState(nextState) {
@@ -475,6 +479,129 @@
     return data;
   }
 
+  function initializeSocketRoom() {
+    if (!roomSocket) {
+      roomSession.message = "멀티플레이 모듈을 불러오지 못했습니다. 네트워크 연결을 확인해 주세요.";
+      return;
+    }
+
+    roomSocket.on("connect", () => {
+      roomSession.message = "";
+      render();
+    });
+    roomSocket.on("connect_error", () => {
+      roomSession.message = "게임 서버에 연결할 수 없습니다. 네트워크 또는 서버 주소를 확인해 주세요.";
+      render();
+    });
+    roomSocket.on("disconnect", (reason) => {
+      if (reason !== "io client disconnect") {
+        roomSession.message = "서버 연결이 끊겼습니다. 자동으로 다시 연결하는 중입니다.";
+        render();
+      }
+    });
+    roomSocket.on("room-updated", (room) => {
+      if (!roomSession.code || room.code !== roomSession.code) return;
+      roomSession.room = room;
+      roomSession.message = "";
+      render();
+    });
+    roomSocket.on("game-state", ({ roomCode, state: nextState }) => {
+      if (roomCode !== roomSession.code || roomSession.room?.isHost) return;
+      applyRemoteState(nextState);
+      render();
+    });
+    roomSocket.on("host-changed", ({ roomCode, hostName }) => {
+      if (roomCode !== roomSession.code) return;
+      roomSession.message = `${hostName || "다음 참여자"}님이 새 방장이 되었습니다.`;
+      render();
+    });
+    roomSocket.connect();
+  }
+
+  function socketAck(event, payload, timeout = 8000) {
+    return new Promise((resolve, reject) => {
+      if (!roomSocket) return reject(new Error("멀티플레이 모듈을 사용할 수 없습니다."));
+      if (!roomSocket.connected) roomSocket.connect();
+
+      roomSocket.timeout(timeout).emit(event, payload, (error, result) => {
+        if (error) return reject(new Error("게임 서버가 응답하지 않습니다. 잠시 후 다시 시도해 주세요."));
+        if (!result?.ok) return reject(new Error(result?.error || "게임 서버 요청을 처리하지 못했습니다."));
+        resolve(result);
+      });
+    });
+  }
+
+  async function createSocketRoom() {
+    try {
+      const name = suggestedRoomName();
+      const result = await socketAck("create-room", { playerName: name, initialState: state });
+      setRoom(result.room, name);
+      showRoomMessage("방을 만들었습니다. 입장 코드를 다른 플레이어에게 공유해 주세요.");
+    } catch (error) {
+      showRoomMessage(error.message || "방을 만들 수 없습니다. 서버 연결을 확인해 주세요.");
+    }
+  }
+
+  async function joinSocketRoom() {
+    const roomCode = (roomSession.joinCode || "").trim().toUpperCase();
+    if (!roomCode) return showRoomMessage("입장 코드를 입력해 주세요.");
+
+    try {
+      const name = suggestedRoomName();
+      const result = await socketAck("join-room", { roomCode, playerName: name });
+      setRoom(result.room, name);
+      if (result.state && !result.room.isHost) applyRemoteState(result.state);
+      showRoomMessage("방에 입장했습니다.");
+    } catch (error) {
+      showRoomMessage(error.message || "방에 입장할 수 없습니다. 코드와 서버 연결을 확인해 주세요.");
+    }
+  }
+
+  async function leaveSocketRoom() {
+    if (roomSession.code && roomSocket?.connected) {
+      try {
+        await socketAck("leave-room", {});
+      } catch {
+        // Local cleanup still lets the player continue offline.
+      }
+    }
+    clearRoom();
+    render();
+  }
+
+  async function reconnectSavedSocketRoom() {
+    if (!roomSession.code || !roomSocket) return;
+    try {
+      const result = await socketAck("join-room", {
+        roomCode: roomSession.code,
+        playerName: suggestedRoomName(),
+      });
+      setRoom(result.room, suggestedRoomName());
+      if (result.state && !result.room.isHost) applyRemoteState(result.state);
+      render();
+    } catch (error) {
+      clearRoom();
+      roomSession.message = error.message || "이전 방에 다시 연결하지 못했습니다.";
+      render();
+    }
+  }
+
+  function scheduleSocketPublish(delay = 120) {
+    if (suppressPublish || !roomSession.code || !roomSession.room?.isHost) return;
+    clearTimeout(publishTimer);
+    publishTimer = setTimeout(publishSocketState, delay);
+  }
+
+  async function publishSocketState() {
+    if (!roomSession.code || !roomSession.room?.isHost) return;
+    try {
+      await socketAck("game-state", { roomCode: roomSession.code, state });
+    } catch (error) {
+      roomSession.message = error.message || "게임 상태를 공유하지 못했습니다.";
+      render();
+    }
+  }
+
   function icon(name, cls = "") {
     return `<svg class="icon ${cls}" aria-hidden="true"><use href="${ICON}${name}"></use></svg>`;
   }
@@ -550,14 +677,15 @@
 
   function renderRoomPanel(compact = false) {
     const connected = Boolean(roomSession.code && roomSession.room);
+    const serverOnline = Boolean(roomSocket?.connected);
     const members = roomSession.room?.members || [];
     const hostName = members.find((member) => member.isHost)?.name || "";
-    const modeLabel = !connected ? "오프라인" : roomSession.room?.isHost ? "방장" : "참여자";
+    const modeLabel = !serverOnline ? "서버 오프라인" : !connected ? "서버 온라인" : roomSession.room?.isHost ? "방장" : "참여자";
     return `
       <section class="${compact ? "room-strip" : "setup-card"}">
         <div class="room-head">
           <strong>방 ${connected ? escapeHtml(roomSession.code) : "연결 없음"}</strong>
-          <span class="chip">${modeLabel}${hostName ? ` · 방장 ${escapeHtml(hostName)}` : ""}</span>
+          <span class="chip connection-status ${serverOnline ? "online" : "offline"}">${modeLabel}${hostName ? ` · 방장 ${escapeHtml(hostName)}` : ""}</span>
         </div>
         <div class="room-grid">
           <input class="text-input" data-action="room-name" value="${escapeHtml(roomSession.name || suggestedRoomName())}" placeholder="닉네임" />
@@ -1180,9 +1308,9 @@
       render();
       return;
     }
-    if (action === "create-room") return createRoom();
-    if (action === "join-room") return joinRoom();
-    if (action === "leave-room") return leaveRoom();
+    if (action === "create-room") return createSocketRoom();
+    if (action === "join-room") return joinSocketRoom();
+    if (action === "leave-room") return leaveSocketRoom();
     if (action === "copy-room-code") return copyRoomCode();
     if (action === "start-game") {
       if (!canControlGame()) return showRoomMessage("방장만 게임을 시작할 수 있습니다.");

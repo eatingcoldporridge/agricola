@@ -26,6 +26,14 @@ npm start
 
 브라우저에서 `http://localhost:5177`을 엽니다. 포트는 `PORT` 환경 변수로 변경할 수 있습니다.
 
+프론트엔드와 백엔드를 서로 다른 주소에 배포한다면 `config.js`에 백엔드 주소를 지정합니다.
+
+```js
+window.AGRICOLA_SERVER_URL = "https://your-agricola-server.onrender.com";
+```
+
+같은 Express 서버에서 화면까지 제공할 때는 빈 문자열을 유지하면 됩니다. Socket.IO 연결은 동일 출처를 자동으로 사용합니다.
+
 ## Socket.IO 이벤트
 
 ### `create-room`

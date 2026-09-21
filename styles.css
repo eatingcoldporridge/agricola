@@ -211,11 +211,27 @@ button {
 .number-input {
   min-height: 44px;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid #aeb9a9;
   border-radius: var(--radius);
   background: #fbfcf9;
   color: var(--ink);
   padding: 0 10px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.text-input:hover,
+.select-input:hover,
+.number-input:hover {
+  border-color: #7f917a;
+}
+
+.text-input:focus,
+.select-input:focus,
+.number-input:focus {
+  outline: none;
+  border-color: var(--green);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(70, 111, 69, 0.18);
 }
 
 .turn-card {
@@ -244,6 +260,18 @@ button {
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+}
+
+.connection-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.connection-status.online::before {
+  background: var(--green);
 }
 
 .room-grid {
