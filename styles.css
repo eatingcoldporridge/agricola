@@ -280,6 +280,15 @@ button {
   gap: 8px;
 }
 
+.room-code-input {
+  grid-column: 1 / -1;
+}
+
+.room-start-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
 .turn-head {
   display: flex;
   justify-content: space-between;

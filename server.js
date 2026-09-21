@@ -17,6 +17,7 @@ const io = new Server(httpServer, {
 
 // This starter keeps room data in memory. Use Redis or a database for production.
 const rooms = new Map();
+const FARM_NAMES = ["빨강 농장", "파랑 농장", "초록 농장", "노랑 농장"];
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "5mb" }));
@@ -33,12 +34,12 @@ io.on("connection", (socket) => {
     leaveCurrentRoom(socket);
 
     const roomCode = createRoomCode();
-    const player = createPlayer(socket, payload.playerName);
+    const player = createPlayer(socket, 0);
     const room = {
       code: roomCode,
       hostId: socket.id,
       players: new Map([[socket.id, player]]),
-      state: payload.initialState ?? null,
+      state: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -59,13 +60,20 @@ io.on("connection", (socket) => {
       return reply(acknowledge, { ok: false, error: "존재하지 않는 방입니다." });
     }
 
+    if (room.state?.started) {
+      return reply(acknowledge, { ok: false, error: "이미 시작한 게임에는 입장할 수 없습니다." });
+    }
+
+    if (!room.players.has(socket.id) && room.players.size >= FARM_NAMES.length) {
+      return reply(acknowledge, { ok: false, error: "방 정원이 가득 찼습니다." });
+    }
+
     if (socket.data.roomCode && socket.data.roomCode !== roomCode) {
       leaveCurrentRoom(socket);
     }
 
     const existingPlayer = room.players.get(socket.id);
-    const player = existingPlayer || createPlayer(socket, payload.playerName);
-    player.name = sanitizePlayerName(payload.playerName || player.name);
+    const player = existingPlayer || createPlayer(socket, nextAvailableSeat(room));
     room.players.set(socket.id, player);
     room.updatedAt = Date.now();
     joinSocketToRoom(socket, roomCode, player.name);
@@ -73,6 +81,23 @@ io.on("connection", (socket) => {
     const result = { ok: true, room: serializeRoom(room, socket.id), state: room.state };
     reply(acknowledge, result);
     emitRoomUpdate(room);
+  });
+
+  socket.on("rename-player", (payload = {}, acknowledge) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room?.players.get(socket.id);
+    if (!room || !player) {
+      return reply(acknowledge, { ok: false, error: "먼저 방에 입장해야 합니다." });
+    }
+    if (!room.state?.started || room.state?.phase === "gameover") {
+      return reply(acknowledge, { ok: false, error: "닉네임은 게임 진행 중에만 변경할 수 있습니다." });
+    }
+
+    player.name = sanitizePlayerName(payload.name);
+    socket.data.playerName = player.name;
+    room.updatedAt = Date.now();
+    emitRoomUpdate(room);
+    reply(acknowledge, { ok: true, name: player.name, room: serializeRoom(room, socket.id) });
   });
 
   socket.on("game-state", (payload = {}, acknowledge) => {
@@ -89,6 +114,15 @@ io.on("connection", (socket) => {
 
     room.state = payload.state;
     room.updatedAt = Date.now();
+
+    if (room.state?.phase === "gameover") {
+      for (const player of room.players.values()) {
+        player.name = FARM_NAMES[player.seat];
+        const gamePlayer = room.state.players?.find((item) => item.memberId === player.id);
+        if (gamePlayer) gamePlayer.name = player.name;
+      }
+      emitRoomUpdate(room);
+    }
 
     const message = {
       roomCode,
@@ -129,12 +163,18 @@ function sanitizePlayerName(value) {
   return name || "플레이어";
 }
 
-function createPlayer(socket, playerName) {
+function createPlayer(socket, seat) {
   return {
     id: socket.id,
-    name: sanitizePlayerName(playerName),
+    name: FARM_NAMES[seat],
+    seat,
     joinedAt: Date.now(),
   };
+}
+
+function nextAvailableSeat(room) {
+  const occupied = new Set([...room.players.values()].map((player) => player.seat));
+  return FARM_NAMES.findIndex((_name, seat) => !occupied.has(seat));
 }
 
 function joinSocketToRoom(socket, roomCode, playerName) {

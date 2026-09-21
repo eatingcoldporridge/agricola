@@ -15,6 +15,7 @@
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(ROOM_CODE_KEY);
   }
+  localStorage.removeItem(ROOM_NAME_KEY);
 
   const RESOURCE_ORDER = [
     "wood",
@@ -216,7 +217,7 @@
   let suppressPublish = false;
   const roomSession = {
     code: localStorage.getItem(ROOM_CODE_KEY) || "",
-    name: localStorage.getItem(ROOM_NAME_KEY) || "",
+    name: "",
     joinCode: localStorage.getItem(ROOM_CODE_KEY) || "",
     room: null,
     source: null,
@@ -268,7 +269,7 @@
 
   function saveState(forceRoomPublish = false) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    scheduleSocketPublish(120, forceRoomPublish);
+    scheduleSocketPublish(forceRoomPublish ? 0 : 120, forceRoomPublish);
   }
 
   function hydrateState(nextState) {
@@ -299,6 +300,7 @@
     if (!roomSession.code) return true;
     if (!state.started) return Boolean(roomSession.room?.isHost);
     const current = getActiveTurnPlayer();
+    if (current?.memberId) return current.memberId === roomSocket?.id;
     return Boolean(current && normalizePlayerName(current.name) === normalizePlayerName(suggestedRoomName()));
   }
 
@@ -372,19 +374,21 @@
   function setRoom(data, name) {
     roomSession.code = data.code || data.room?.code || "";
     roomSession.joinCode = roomSession.code;
-    roomSession.name = name;
     roomSession.room = data.room || data;
+    const ownMember = roomSession.room?.members?.find((member) => member.id === roomSocket?.id);
+    roomSession.name = ownMember?.name || name || "";
     roomSession.message = "";
     localStorage.setItem(ROOM_CODE_KEY, roomSession.code);
-    localStorage.setItem(ROOM_NAME_KEY, name);
   }
 
   function clearRoom() {
     roomSession.code = "";
     roomSession.joinCode = "";
+    roomSession.name = "";
     roomSession.room = null;
     roomSession.message = "방에서 나왔습니다.";
     localStorage.removeItem(ROOM_CODE_KEY);
+    localStorage.removeItem(ROOM_NAME_KEY);
   }
 
   async function reconnectSavedRoom() {
@@ -521,6 +525,8 @@
     roomSocket.on("room-updated", (room) => {
       if (!roomSession.code || room.code !== roomSession.code) return;
       roomSession.room = room;
+      const ownMember = room.members?.find((member) => member.id === roomSocket.id);
+      if (ownMember) roomSession.name = ownMember.name;
       roomSession.message = "";
       render();
     });
@@ -552,9 +558,8 @@
 
   async function createSocketRoom() {
     try {
-      const name = suggestedRoomName();
-      const result = await socketAck("create-room", { playerName: name, initialState: state });
-      setRoom(result.room, name);
+      const result = await socketAck("create-room", {});
+      setRoom(result.room);
       showRoomMessage("방을 만들었습니다. 입장 코드를 다른 플레이어에게 공유해 주세요.");
     } catch (error) {
       showRoomMessage(error.message || "방을 만들 수 없습니다. 서버 연결을 확인해 주세요.");
@@ -566,9 +571,8 @@
     if (!roomCode) return showRoomMessage("입장 코드를 입력해 주세요.");
 
     try {
-      const name = suggestedRoomName();
-      const result = await socketAck("join-room", { roomCode, playerName: name });
-      setRoom(result.room, name);
+      const result = await socketAck("join-room", { roomCode });
+      setRoom(result.room);
       if (result.state && !result.room.isHost) applyRemoteState(result.state);
       showRoomMessage("방에 입장했습니다.");
     } catch (error) {
@@ -593,15 +597,32 @@
     try {
       const result = await socketAck("join-room", {
         roomCode: roomSession.code,
-        playerName: suggestedRoomName(),
       });
-      setRoom(result.room, suggestedRoomName());
+      setRoom(result.room);
       if (result.state && !result.room.isHost) applyRemoteState(result.state);
       render();
     } catch (error) {
       clearRoom();
       roomSession.message = error.message || "이전 방에 다시 연결하지 못했습니다.";
       render();
+    }
+  }
+
+  async function renameSocketPlayer() {
+    const name = String(roomSession.name || "").trim();
+    if (!name) return showRoomMessage("사용할 닉네임을 입력해 주세요.");
+    try {
+      const previousMember = roomSession.room?.members?.find((member) => member.id === roomSocket?.id);
+      const result = await socketAck("rename-player", { name });
+      roomSession.room = result.room;
+      roomSession.name = result.name;
+      const player = state.players?.find((item) => item.memberId === roomSocket?.id)
+        || state.players?.find((item) => item.name === previousMember?.name);
+      if (player) player.name = result.name;
+      saveState(true);
+      showRoomMessage(`닉네임을 ${result.name}(으)로 변경했습니다.`);
+    } catch (error) {
+      showRoomMessage(error.message || "닉네임을 변경하지 못했습니다.");
     }
   }
 
@@ -648,8 +669,6 @@
   }
 
   function renderSetup() {
-    const count = state.setup.count;
-    const names = state.setup.names;
     return `
       <div class="app-shell">
         <div class="topbar">
@@ -660,26 +679,6 @@
         </div>
         <main class="content">
           <section class="setup">
-            <div class="setup-card">
-              <h1>새 게임</h1>
-              <div class="setup-grid">
-                <div class="form-row">
-                  <label>플레이어 수</label>
-                  <div class="player-count">
-                    ${[1, 2, 3, 4]
-                      .map((n) => `<button class="seg-btn ${count === n ? "active" : ""}" data-action="setup-count" data-count="${n}">${n}</button>`)
-                      .join("")}
-                  </div>
-                </div>
-                ${Array.from({ length: count }, (_, i) => `
-                  <div class="form-row">
-                    <label>${i + 1}번 농장</label>
-                    <input class="text-input" data-action="setup-name" data-index="${i}" value="${escapeHtml(names[i])}" />
-                  </div>
-                `).join("")}
-                <button class="primary-btn" data-action="start-game">게임 시작</button>
-              </div>
-            </div>
             ${renderRoomPanel(false)}
             <div class="setup-card">
               <div class="chips">
@@ -703,19 +702,24 @@
     const modeLabel = !serverOnline ? "서버 오프라인" : !connected ? "서버 온라인" : roomSession.room?.isHost ? "방장" : "참여자";
     return `
       <section class="${compact ? "room-strip" : "setup-card"}">
+        ${compact ? "" : "<h1>새 게임</h1>"}
         <div class="room-head">
           <strong>방 ${connected ? escapeHtml(roomSession.code) : "연결 없음"}${connected ? ` · 참여 ${members.length}명` : ""}</strong>
           <span class="chip connection-status ${serverOnline ? "online" : "offline"}">${modeLabel}${hostName ? ` · 방장 ${escapeHtml(hostName)}` : ""}</span>
         </div>
         <div class="room-grid">
-          <input class="text-input" data-action="room-name" value="${escapeHtml(roomSession.name || suggestedRoomName())}" placeholder="닉네임" />
-          <input class="text-input" data-action="room-code" value="${escapeHtml(roomSession.joinCode || "")}" placeholder="입장 코드" />
-          <button class="secondary-btn" data-action="create-room">방 만들기</button>
-          <button class="secondary-btn" data-action="join-room">코드 입장</button>
-          ${connected ? `<button class="secondary-btn" data-action="copy-room-code">코드 복사</button><button class="danger-btn" data-action="leave-room">나가기</button>` : ""}
+          ${connected
+            ? `<input class="text-input" data-action="room-name" value="${escapeHtml(roomSession.name)}" aria-label="닉네임" ${state.started && state.phase !== "gameover" ? "" : "readonly"} />
+               <input class="text-input" value="${escapeHtml(roomSession.code)}" aria-label="방 코드" readonly />
+               ${state.started && state.phase !== "gameover" ? `<button class="secondary-btn" data-action="save-room-name">닉네임 변경</button>` : `<button class="secondary-btn" data-action="copy-room-code">코드 복사</button>`}
+               <button class="danger-btn" data-action="leave-room">나가기</button>`
+            : `<input class="text-input room-code-input" data-action="room-code" value="${escapeHtml(roomSession.joinCode || "")}" placeholder="입장 코드" />
+               <button class="secondary-btn" data-action="create-room">방 만들기</button>
+               <button class="secondary-btn" data-action="join-room">코드 입장</button>`}
         </div>
         ${members.length ? `<div class="chips">${members.map((member) => `<span class="chip">${member.isHost ? icon("first", "sm") : icon("person", "sm")}${escapeHtml(member.name)}</span>`).join("")}</div>` : ""}
         ${roomSession.message ? `<div class="notice">${escapeHtml(roomSession.message)}</div>` : ""}
+        ${!state.started ? `<button class="primary-btn room-start-btn" data-action="start-game" ${connected && roomSession.room?.isHost ? "" : "disabled"}>게임 시작</button>` : ""}
       </section>
     `;
   }
@@ -1338,6 +1342,7 @@
     if (action === "join-room") return joinSocketRoom();
     if (action === "leave-room") return leaveSocketRoom();
     if (action === "copy-room-code") return copyRoomCode();
+    if (action === "save-room-name") return renameSocketPlayer();
     if (action === "start-game") {
       if (!canControlGame()) return showRoomMessage("방장만 게임을 시작할 수 있습니다.");
       return commit(() => startGame());
@@ -1475,7 +1480,6 @@
     }
     if (action === "room-name") {
       roomSession.name = target.value;
-      localStorage.setItem(ROOM_NAME_KEY, roomSession.name);
       return;
     }
     if (action === "room-code") {
@@ -1542,8 +1546,9 @@
   }
 
   function startGame() {
-    const count = state.setup.count;
-    const names = state.setup.names;
+    const members = roomSession.room?.members || [];
+    const count = members.length || state.setup.count;
+    const names = members.length ? members.map((member) => member.name) : state.setup.names;
     state = {
       ...defaultState(),
       started: true,
@@ -1560,7 +1565,7 @@
       accum: {},
       scheduledFood: [],
       majorMarket: MAJOR_IMPROVEMENTS.map((card) => card.id),
-      players: Array.from({ length: count }, (_, i) => createPlayer(i, names[i] || `${i + 1}번 농장`, i === 0 ? 2 : 3)),
+      players: Array.from({ length: count }, (_, i) => createPlayer(i, names[i] || `${i + 1}번 농장`, i === 0 ? 2 : 3, members[i]?.id)),
       log: [],
       history: [],
     };
@@ -1581,7 +1586,7 @@
     return arr;
   }
 
-  function createPlayer(index, name, food) {
+  function createPlayer(index, name, food, memberId = "") {
     const cells = Array.from({ length: FARM_ROWS * FARM_COLS }, () => ({
       type: "empty",
       stable: false,
@@ -1594,6 +1599,7 @@
     cells[5].type = "room";
     return {
       id: `p${index + 1}`,
+      memberId,
       name,
       color: PLAYER_COLORS[index],
       resources: Object.fromEntries(RESOURCE_ORDER.map((key) => [key, key === "food" ? food : 0])),
