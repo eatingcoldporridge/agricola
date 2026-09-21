@@ -95,8 +95,16 @@ io.on("connection", (socket) => {
 
     player.name = sanitizePlayerName(payload.name);
     socket.data.playerName = player.name;
+    const gamePlayer = room.state.players?.find((item) => item.memberId === socket.id);
+    if (gamePlayer) gamePlayer.name = player.name;
     room.updatedAt = Date.now();
     emitRoomUpdate(room);
+    socket.to(room.code).emit("game-state", {
+      roomCode: room.code,
+      state: room.state,
+      updatedBy: socket.id,
+      updatedAt: room.updatedAt,
+    });
     reply(acknowledge, { ok: true, name: player.name, room: serializeRoom(room, socket.id) });
   });
 

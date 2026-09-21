@@ -9,6 +9,7 @@
   const MAX_FAMILY = 5;
   const MAX_STABLES = 4;
   const HARVEST_AFTER = [4, 7, 9, 11, 13, 14];
+  const DEFAULT_FARM_NAMES = ["빨강 농장", "파랑 농장", "초록 농장", "노랑 농장"];
 
   const navigationEntry = performance.getEntriesByType?.("navigation")?.[0];
   if (navigationEntry?.type === "reload") {
@@ -215,6 +216,8 @@
   const clientId = getClientId();
   let publishTimer = null;
   let suppressPublish = false;
+  let snackbar = null;
+  let snackbarTimer = null;
   const roomSession = {
     code: localStorage.getItem(ROOM_CODE_KEY) || "",
     name: "",
@@ -268,8 +271,29 @@
   }
 
   function saveState(forceRoomPublish = false) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    persistState();
     scheduleSocketPublish(forceRoomPublish ? 0 : 120, forceRoomPublish);
+  }
+
+  function persistState() {
+    if (state.phase === "gameover") {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      const isQuotaError = error?.name === "QuotaExceededError" || error?.code === 22 || error?.code === 1014;
+      if (!isQuotaError) throw error;
+      state.history = [];
+      if (Array.isArray(state.log)) state.log = state.log.slice(-40);
+      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
   }
 
   function hydrateState(nextState) {
@@ -280,6 +304,8 @@
         player.occupations ||= [];
       });
     }
+    // Undo snapshots are session-only; old nested snapshots can grow exponentially.
+    nextState.history = [];
     return nextState;
   }
 
@@ -317,6 +343,33 @@
   function showRoomMessage(message) {
     roomSession.message = message;
     render();
+  }
+
+  function showSnackbar(message, duration = 2800) {
+    snackbar = { message };
+    clearTimeout(snackbarTimer);
+    render();
+    snackbarTimer = setTimeout(() => {
+      snackbar = null;
+      render();
+    }, duration);
+  }
+
+  function farmLabel(player, sourceState = state) {
+    const index = sourceState.players?.findIndex((item) => item.id === player?.id);
+    return DEFAULT_FARM_NAMES[index] || player?.name || "다른 농장";
+  }
+
+  function showOtherTurnSnackbar() {
+    const current = getActiveTurnPlayer();
+    if (current) showSnackbar(`${farmLabel(current)}이 행동하고 있습니다.`);
+  }
+
+  function actionResultMessage(actor, result, sourceState) {
+    const label = farmLabel(actor, sourceState);
+    const gain = result.match(/^(.+?)에서 (.+) 획득\.$/);
+    if (gain) return `${label}님이 ${gain[1]} 행동을 하여 ${gain[2]} 획득했습니다.`;
+    return `${label}님이 ${result}`;
   }
 
   async function createRoom() {
@@ -438,10 +491,30 @@
   }
 
   function applyRemoteState(nextState) {
+    const previousState = state;
+    const previousActor = getActiveTurnPlayer();
+    const previousLastLog = previousState.log?.at(-1);
     suppressPublish = true;
     state = hydrateState(nextState);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    persistState();
     suppressPublish = false;
+
+    const latestLogs = state.log || [];
+    const previousLogIndex = previousLastLog ? latestLogs.lastIndexOf(previousLastLog) : -1;
+    const newLogs = latestLogs.slice(previousLogIndex + 1);
+    const actionLog = previousActor
+      ? newLogs.find((entry) => entry.startsWith(`${previousActor.name}:`))
+      : "";
+    if (actionLog) {
+      const result = actionLog.slice(actionLog.indexOf(":") + 1).trim();
+      showSnackbar(actionResultMessage(previousActor, result, previousState));
+      return;
+    }
+
+    const current = getActiveTurnPlayer();
+    if (current?.memberId === roomSocket?.id && previousActor?.memberId !== roomSocket?.id) {
+      showSnackbar("당신 차례입니다");
+    }
   }
 
   function scheduleRoomPublish(delay = 120) {
@@ -619,7 +692,7 @@
       const player = state.players?.find((item) => item.memberId === roomSocket?.id)
         || state.players?.find((item) => item.name === previousMember?.name);
       if (player) player.name = result.name;
-      saveState(true);
+      persistState();
       showRoomMessage(`닉네임을 ${result.name}(으)로 변경했습니다.`);
     } catch (error) {
       showRoomMessage(error.message || "닉네임을 변경하지 못했습니다.");
@@ -742,10 +815,13 @@
   }
 
   function renderTurnSnackbar() {
-    if (!roomSession.code || canControlGame() || state.phase === "gameover") return "";
+    if (snackbar) {
+      return `<div class="turn-snackbar" role="status" aria-live="polite">${escapeHtml(snackbar.message)}</div>`;
+    }
+    if (!roomSession.code || !canControlGame() || state.phase === "gameover") return "";
     const current = getActiveTurnPlayer();
     if (!current) return "";
-    return `<div class="turn-snackbar" role="status" aria-live="polite"><span class="player-dot" style="background:${current.color}"></span>${escapeHtml(current.name)}님이 행동하고 있습니다.</div>`;
+    return `<div class="turn-snackbar my-turn" role="status" aria-live="polite"><span class="player-dot" style="background:${current.color}"></span>당신 차례입니다</div>`;
   }
 
   function renderTurnCard() {
@@ -844,7 +920,7 @@
       .map(([key, value]) => `<span class="chip">${icon(key, "sm")}${value}</span>`)
       .join("");
     const fixedGain = space.gain ? Object.entries(space.gain).map(([key, value]) => `<span class="chip">${icon(key, "sm")}${value}</span>`).join("") : "";
-    const disabled = !canControlGame() || state.phase !== "work" || claimedBy || getCurrentPlayer().placed >= getCurrentPlayer().family;
+    const disabled = state.phase !== "work" || claimedBy || getCurrentPlayer().placed >= getCurrentPlayer().family;
     return `
       <button class="action-card ${space.group === "round" ? "round" : ""} ${claimedBy ? "claimed" : ""}" data-action="open-action" data-space="${space.id}" ${disabled ? "disabled" : ""}>
         <div>
@@ -1332,6 +1408,11 @@
     if (action === "noop") return;
     if (action === "close-modal" && target.classList.contains("modal-backdrop") && event.target !== target) return;
 
+    const allowedOutsideTurn = new Set(["tab", "view-player", "copy-room-code", "leave-room", "save-room-name"]);
+    if (state.started && roomSession.code && !canControlGame() && !allowedOutsideTurn.has(action)) {
+      return showOtherTurnSnackbar();
+    }
+
     if (action === "setup-count") {
       state.setup.count = Number(target.dataset.count);
       saveState();
@@ -1360,7 +1441,7 @@
       return;
     }
     if (action === "open-action") {
-      if (!canControlGame()) return showRoomMessage("방장만 행동을 선택할 수 있습니다.");
+      if (!canControlGame()) return showOtherTurnSnackbar();
       openAction(target.dataset.space);
       return;
     }
@@ -1522,9 +1603,9 @@
 
   function commit(mutator) {
     const mayPublish = canControlGame();
-    const before = JSON.stringify({ ...state, modal: state.modal });
+    const before = JSON.stringify({ ...state, modal: state.modal, history: [] });
     try {
-      state.history = [...(state.history || []), before].slice(-30);
+      state.history = [...(state.history || []), before].slice(-12);
       mutator();
       saveState(mayPublish);
     } catch (error) {
@@ -1539,8 +1620,10 @@
 
   function undo() {
     if (!state.history?.length) return;
-    const previous = state.history.pop();
+    const history = [...state.history];
+    const previous = history.pop();
     state = JSON.parse(previous);
+    state.history = history;
     saveState();
     render();
   }

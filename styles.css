@@ -442,7 +442,7 @@ button {
 
 .turn-snackbar {
   position: fixed;
-  right: 12px;
+  left: 50%;
   bottom: calc(76px + env(safe-area-inset-bottom));
   z-index: 45;
   display: flex;
@@ -458,6 +458,28 @@ button {
   font-size: 13px;
   font-weight: 800;
   pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.turn-snackbar.my-turn {
+  border-color: var(--green);
+  animation: turn-attention 1.15s ease-in-out infinite;
+}
+
+@keyframes turn-attention {
+  0%, 100% {
+    box-shadow: 0 6px 20px rgba(31, 37, 32, 0.18), 0 0 0 0 rgba(70, 111, 69, 0.32);
+  }
+  50% {
+    box-shadow: 0 6px 20px rgba(31, 37, 32, 0.18), 0 0 0 6px rgba(70, 111, 69, 0.08);
+    background: #edf6e9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-snackbar.my-turn {
+    animation: none;
+  }
 }
 
 .tab-btn {
